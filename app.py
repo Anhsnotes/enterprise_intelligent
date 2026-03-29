@@ -292,13 +292,78 @@ def render_mermaid_html(diagram_source: str, height: int = 920):
 <head>
   <meta charset="utf-8"/>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: transparent;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+    }}
+    #toolbar {{
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.25);
+    }}
+    #toolbar button {{
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      color: #e0e0e0;
+      cursor: pointer;
+    }}
+    #toolbar button:hover {{ background: rgba(255,255,255,0.15); }}
+    #zoomPct {{ min-width: 44px; color: #aaa; }}
+    #viewport {{
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 8px;
+    }}
+    #zoom-inner {{
+      transform-origin: top left;
+      display: inline-block;
+    }}
+  </style>
 </head>
-<body style="margin:0;padding:8px;background:transparent;">
-  <div id="mmd-out" class="mermaid"></div>
+<body>
+  <div id="toolbar">
+    <span style="color:#888;margin-right:4px">Zoom</span>
+    <button type="button" id="zoomOut" title="Zoom out">−</button>
+    <button type="button" id="zoomReset" title="100%">Reset</button>
+    <button type="button" id="zoomIn" title="Zoom in">+</button>
+    <span id="zoomPct">100%</span>
+    <span style="color:#666;font-size:11px;margin-left:8px">or hold Ctrl/⌘ and scroll wheel</span>
+  </div>
+  <div id="viewport">
+    <div id="zoom-inner">
+      <div id="mmd-out" class="mermaid"></div>
+    </div>
+  </div>
   <script>
     (async function () {{
       const diagram = atob("{b64}");
       const el = document.getElementById("mmd-out");
+      const zoomInner = document.getElementById("zoom-inner");
+      const viewport = document.getElementById("viewport");
+      const zoomPct = document.getElementById("zoomPct");
+      let scale = 1;
+      const MIN = 0.25, MAX = 10;
+
+      function applyScale() {{
+        scale = Math.min(MAX, Math.max(MIN, scale));
+        zoomInner.style.transform = "scale(" + scale + ")";
+        zoomPct.textContent = Math.round(scale * 100) + "%";
+      }}
+
       el.textContent = diagram;
       mermaid.initialize({{
         startOnLoad: false,
@@ -307,6 +372,31 @@ def render_mermaid_html(diagram_source: str, height: int = 920):
         flowchart: {{ useMaxWidth: true, htmlLabels: true, curve: "basis" }}
       }});
       await mermaid.run({{ querySelector: "#mmd-out" }});
+      applyScale();
+
+      document.getElementById("zoomIn").onclick = function () {{
+        scale *= 1.15;
+        applyScale();
+      }};
+      document.getElementById("zoomOut").onclick = function () {{
+        scale /= 1.15;
+        applyScale();
+      }};
+      document.getElementById("zoomReset").onclick = function () {{
+        scale = 1;
+        applyScale();
+        viewport.scrollTop = 0;
+        viewport.scrollLeft = 0;
+      }};
+
+      viewport.addEventListener("wheel", function (e) {{
+        if (e.ctrlKey || e.metaKey) {{
+          e.preventDefault();
+          const delta = e.deltaY > 0 ? -0.08 : 0.08;
+          scale += delta;
+          applyScale();
+        }}
+      }}, {{ passive: false }});
     }})();
   </script>
 </body>
@@ -323,7 +413,9 @@ with tab_tree:
 with tab_mermaid:
     st.caption(
         "Interactive flowchart powered by [Mermaid.js](https://mermaid.js.org/) "
-        "(workflow → step → action → metric → data element → system field)."
+        "(workflow → step → action → metric → data element → system field). "
+        "**Zoom:** use the **− / + / Reset** bar above the chart inside the frame, or **Ctrl+scroll** "
+        "(**⌘+scroll** on Mac) while the pointer is over the chart area."
     )
     if not tree:
         st.info("This workflow has no operation steps yet.")
