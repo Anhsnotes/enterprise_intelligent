@@ -207,10 +207,13 @@ def _mermaid_escape_label(text, max_len=72):
     return s
 
 
-def build_mermaid_flowchart(wf, tree):
-    """Build Mermaid flowchart TB from workflow + nested tree (same structure as HTML tree)."""
+def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
+    """Build Mermaid flowchart from workflow + nested tree. direction: TB (vertical) or LR (sideways / left-to-right)."""
+    direction = (direction or "TB").upper()
+    if direction not in ("TB", "LR"):
+        direction = "TB"
     lines = [
-        "flowchart TB",
+        f"flowchart {direction}",
         "  %% Enterprise Intelligence lineage (auto-generated)",
     ]
     class_lines = [
@@ -420,7 +423,16 @@ with tab_mermaid:
     if not tree:
         st.info("This workflow has no operation steps yet.")
     else:
-        mermaid_src = build_mermaid_flowchart(wf, tree)
+        mermaid_dir = st.radio(
+            "Diagram layout",
+            ("TB", "LR"),
+            horizontal=True,
+            format_func=lambda d: "Top → bottom"
+            if d == "TB"
+            else "Left → right (sideways)",
+            help="Mermaid `flowchart TB` draws top-down; `flowchart LR` runs the main flow left-to-right.",
+        )
+        mermaid_src = build_mermaid_flowchart(wf, tree, direction=mermaid_dir)
         with st.expander("View / copy Mermaid source"):
             st.code(mermaid_src, language="mermaid")
         # Tall iframe: large lineages scroll inside the component
