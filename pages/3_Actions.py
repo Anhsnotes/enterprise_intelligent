@@ -29,7 +29,7 @@ step_map = {f"Step {s['step_order']}: {s['name']}": s["id"] for s in steps}
 sel_step = st.selectbox("Operation Step", list(step_map.keys()))
 step_id = step_map[sel_step]
 
-# ── Add new action ─────────────────────────────────────────────────
+# -- Add new action -------------------------------------------------
 with st.expander("Add New Action"):
     with st.form("add_action", clear_on_submit=True):
         name = st.text_input("Name")
@@ -46,7 +46,7 @@ with st.expander("Add New Action"):
             except Exception as e:
                 st.error(str(e))
 
-# ── List ───────────────────────────────────────────────────────────
+# -- List -----------------------------------------------------------
 actions = fetch_all(
     "SELECT * FROM action WHERE operation_step_id=%s ORDER BY id", (step_id,)
 )
@@ -56,9 +56,9 @@ if not actions:
 
 st.dataframe(pd.DataFrame(actions), use_container_width=True, hide_index=True)
 
-# ── Edit / Delete ──────────────────────────────────────────────────
+# -- Edit / Delete --------------------------------------------------
 st.subheader("Edit / Delete")
-act_map = {f"{a['id']} — {a['name']}": a for a in actions}
+act_map = {f"{a['id']} - {a['name']}": a for a in actions}
 sel = st.selectbox("Select action", list(act_map.keys()), key="act_sel")
 action = act_map[sel]
 

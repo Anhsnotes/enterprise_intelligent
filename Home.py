@@ -6,12 +6,12 @@ import pandas as pd
 from collections import OrderedDict
 from db import fetch_all
 
-st.set_page_config(page_title="Enterprise Intelligence", layout="wide")
+st.set_page_config(page_title="Home", layout="wide")
 
 st.title("Enterprise Intelligence")
-st.markdown("**Lineage Viewer** — trace every workflow from business cycle down to source system field.")
+st.markdown("**Lineage Viewer** - trace every workflow from business cycle down to source system field.")
 
-# ── Workflow selector ──────────────────────────────────────────────
+# -- Workflow selector ----------------------------------------------
 workflows = fetch_all("SELECT id, name, description FROM workflow ORDER BY name")
 
 if not workflows:
@@ -26,7 +26,7 @@ if wf["description"]:
     st.caption(wf["description"])
 
 
-# ── Fetch full lineage in one query ────────────────────────────────
+# -- Fetch full lineage in one query --------------------------------
 LINEAGE_SQL = """
 SELECT
     os.id   AS step_id,   os.name AS step_name,   os.description AS step_desc,   os.step_order,
@@ -48,7 +48,7 @@ ORDER BY os.step_order, a.id, m.id, de.name, s.name
 rows = fetch_all(LINEAGE_SQL, (wf["id"],))
 
 
-# ── Build nested tree from flat rows ──────────────────────────────
+# -- Build nested tree from flat rows ------------------------------
 def build_tree(rows):
     steps = OrderedDict()
     for r in rows:
@@ -99,7 +99,7 @@ def build_tree(rows):
 
 tree = build_tree(rows)
 
-# ── Summary metrics ────────────────────────────────────────────────
+# -- Summary metrics ------------------------------------------------
 n_steps = len(tree)
 n_actions = sum(len(s["actions"]) for s in tree.values())
 n_metrics = sum(len(m) for s in tree.values() for m in [a["metrics"] for a in s["actions"].values()])
@@ -119,12 +119,12 @@ c4.metric("Data Elements", n_des)
 
 st.divider()
 
-# ── Tabs: Tree vs Mermaid flowchart vs Table ───────────────────────
+# -- Tabs: Tree vs Mermaid flowchart vs Table -----------------------
 tab_tree, tab_mermaid, tab_table = st.tabs(
     ["Lineage Tree", "Lineage Flowchart (Mermaid)", "Lineage Table"]
 )
 
-DIRECTION_SYM = {"higher_is_better": "▲ higher is better", "lower_is_better": "▼ lower is better", "target": "◆ target"}
+DIRECTION_SYM = {"higher_is_better": "^ higher is better", "lower_is_better": "v lower is better", "target": "* target"}
 LAYER_COLORS = {
     "step":   "#1976D2",
     "action": "#388E3C",
@@ -185,7 +185,7 @@ def render_tree_html(tree):
                         f'<span>{de["name"]}</span>'
                         f' <span style="background:#f3e5f5;color:#6a1b9a;padding:1px 6px;border-radius:4px;'
                         f'font-size:0.76em">{de["role"]}</span>'
-                        f' &larr; {sys_str}'
+                        f' <- {sys_str}'
                         f'</div>'
                     )
 
@@ -201,7 +201,7 @@ def _mermaid_escape_label(text, max_len=72):
     s = str(text).replace("\n", " ").replace("\r", " ")
     s = re.sub(r"\s+", " ", s).strip()
     if len(s) > max_len:
-        s = s[: max_len - 1] + "…"
+        s = s[: max_len - 1] + "..."
     # Avoid breaking Mermaid ["..."] node syntax
     s = s.replace('"', "'").replace("[", "(").replace("]", ")")
     return s
@@ -227,7 +227,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
 
     wf_id = wf["id"]
     wf_node = f"WF{wf_id}"
-    wf_lbl = _mermaid_escape_label(f"Workflow · {wf['name']}")
+    wf_lbl = _mermaid_escape_label(f"Workflow: {wf['name']}")
     lines.append(f'  {wf_node}["{wf_lbl}"]:::wf')
 
     if not tree:
@@ -254,7 +254,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
 
             for mid, metric in action["metrics"].items():
                 mt_node = f"M{mid}"
-                unit = metric.get("unit") or "—"
+                unit = metric.get("unit") or " - "
                 direction = (metric.get("direction") or "").replace("_", " ")
                 mt_lbl = _mermaid_escape_label(f"{metric['name']} [{unit}, {direction}]")
                 lines.append(f'  {mt_node}["{mt_lbl}"]:::mt')
@@ -266,7 +266,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
                 for (de_id, role), de in metric["data_elements"].items():
                     role_s = (role or "link").replace(" ", "_")
                     de_node = f"DE{de_id}_{role_s}"
-                    de_lbl = _mermaid_escape_label(f"{de['name']} · role: {role}")
+                    de_lbl = _mermaid_escape_label(f"{de['name']}, role: {role}")
                     lines.append(f'  {de_node}["{de_lbl}"]:::de')
                     lines.append(f"  {mt_node} --> {de_node}")
 
@@ -278,7 +278,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
                         fld = sysrow.get("field") or "?"
                         sy_node = f"SY{sysrow['id']}_DE{de_id}_{idx}"
                         sy_lbl = _mermaid_escape_label(
-                            f"{sysrow['name']} · {tbl}.{fld}"
+                            f"{sysrow['name']}: {tbl}.{fld}"
                         )
                         lines.append(f'  {sy_node}["{sy_lbl}"]:::sy')
                         lines.append(f"  {de_node} --> {sy_node}")
@@ -340,11 +340,11 @@ def render_mermaid_html(diagram_source: str, height: int = 920):
 <body>
   <div id="toolbar">
     <span style="color:#888;margin-right:4px">Zoom</span>
-    <button type="button" id="zoomOut" title="Zoom out">−</button>
+    <button type="button" id="zoomOut" title="Zoom out">-</button>
     <button type="button" id="zoomReset" title="100%">Reset</button>
     <button type="button" id="zoomIn" title="Zoom in">+</button>
     <span id="zoomPct">100%</span>
-    <span style="color:#666;font-size:11px;margin-left:8px">or hold Ctrl/⌘ and scroll wheel</span>
+    <span style="color:#666;font-size:11px;margin-left:8px">or hold Ctrl/Cmd and scroll wheel</span>
   </div>
   <div id="viewport">
     <div id="zoom-inner">
@@ -416,9 +416,9 @@ with tab_tree:
 with tab_mermaid:
     st.caption(
         "Interactive flowchart powered by [Mermaid.js](https://mermaid.js.org/) "
-        "(workflow → step → action → metric → data element → system field). "
-        "**Zoom:** use the **− / + / Reset** bar above the chart inside the frame, or **Ctrl+scroll** "
-        "(**⌘+scroll** on Mac) while the pointer is over the chart area."
+        "(workflow -> step -> action -> metric -> data element -> system field). "
+        "**Zoom:** use the **- / + / Reset** bar above the chart inside the frame, or **Ctrl+scroll** "
+        "(**Cmd+scroll** on Mac) while the pointer is over the chart area."
     )
     if not tree:
         st.info("This workflow has no operation steps yet.")
@@ -427,9 +427,9 @@ with tab_mermaid:
             "Diagram layout",
             ("TB", "LR"),
             horizontal=True,
-            format_func=lambda d: "Top → bottom"
+            format_func=lambda d: "Top -> bottom"
             if d == "TB"
-            else "Left → right (sideways)",
+            else "Left -> right (sideways)",
             help="Mermaid `flowchart TB` draws top-down; `flowchart LR` runs the main flow left-to-right.",
         )
         mermaid_src = build_mermaid_flowchart(wf, tree, direction=mermaid_dir)

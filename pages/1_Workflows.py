@@ -6,7 +6,7 @@ st.set_page_config(page_title="Workflows", layout="wide")
 st.title("Workflows")
 st.caption("Business cycles that define how the enterprise operates (e.g. Procure-to-Pay, Order-to-Cash).")
 
-# ── Add new ────────────────────────────────────────────────────────
+# -- Add new --------------------------------------------------------
 with st.expander("Add New Workflow"):
     with st.form("add_wf", clear_on_submit=True):
         name = st.text_input("Name")
@@ -19,7 +19,7 @@ with st.expander("Add New Workflow"):
             except Exception as e:
                 st.error(str(e))
 
-# ── List ───────────────────────────────────────────────────────────
+# -- List -----------------------------------------------------------
 workflows = fetch_all("SELECT * FROM workflow ORDER BY name")
 if not workflows:
     st.info("No workflows yet.")
@@ -27,9 +27,9 @@ if not workflows:
 
 st.dataframe(pd.DataFrame(workflows), use_container_width=True, hide_index=True)
 
-# ── Edit / Delete ──────────────────────────────────────────────────
+# -- Edit / Delete --------------------------------------------------
 st.subheader("Edit / Delete")
-wf_map = {f"{w['id']} — {w['name']}": w for w in workflows}
+wf_map = {f"{w['id']} - {w['name']}": w for w in workflows}
 sel = st.selectbox("Select workflow", list(wf_map.keys()), key="wf_sel")
 wf = wf_map[sel]
 

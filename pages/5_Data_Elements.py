@@ -11,7 +11,7 @@ DATA_TYPES = [
     "text", "boolean", "integer", "decimal",
 ]
 
-# ── Add new ────────────────────────────────────────────────────────
+# -- Add new --------------------------------------------------------
 with st.expander("Add New Data Element"):
     with st.form("add_de", clear_on_submit=True):
         name = st.text_input("Name")
@@ -28,7 +28,7 @@ with st.expander("Add New Data Element"):
             except Exception as e:
                 st.error(str(e))
 
-# ── List ───────────────────────────────────────────────────────────
+# -- List -----------------------------------------------------------
 elements = fetch_all("SELECT * FROM data_element ORDER BY name")
 if not elements:
     st.info("No data elements yet.")
@@ -36,9 +36,9 @@ if not elements:
 
 st.dataframe(pd.DataFrame(elements), use_container_width=True, hide_index=True)
 
-# ── Edit / Delete ──────────────────────────────────────────────────
+# -- Edit / Delete --------------------------------------------------
 st.subheader("Edit / Delete")
-de_map = {f"{d['id']} — {d['name']}": d for d in elements}
+de_map = {f"{d['id']} - {d['name']}": d for d in elements}
 sel = st.selectbox("Select data element", list(de_map.keys()), key="de_sel")
 de = de_map[sel]
 

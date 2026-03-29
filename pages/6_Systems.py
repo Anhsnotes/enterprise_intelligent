@@ -8,7 +8,7 @@ st.caption("ERP and source systems where data originates.")
 
 SYSTEM_TYPES = ["ERP", "CRM", "WMS", "MES", "PLM", "HCM", "SCM", "BI", "Other"]
 
-# ── Add new ────────────────────────────────────────────────────────
+# -- Add new --------------------------------------------------------
 with st.expander("Add New System"):
     with st.form("add_sys", clear_on_submit=True):
         name = st.text_input("Name")
@@ -26,7 +26,7 @@ with st.expander("Add New System"):
             except Exception as e:
                 st.error(str(e))
 
-# ── List ───────────────────────────────────────────────────────────
+# -- List -----------------------------------------------------------
 systems = fetch_all("SELECT * FROM system ORDER BY name")
 if not systems:
     st.info("No systems yet.")
@@ -34,9 +34,9 @@ if not systems:
 
 st.dataframe(pd.DataFrame(systems), use_container_width=True, hide_index=True)
 
-# ── Edit / Delete ──────────────────────────────────────────────────
+# -- Edit / Delete --------------------------------------------------
 st.subheader("Edit / Delete")
-sys_map = {f"{s['id']} — {s['name']}": s for s in systems}
+sys_map = {f"{s['id']} - {s['name']}": s for s in systems}
 sel = st.selectbox("Select system", list(sys_map.keys()), key="sys_sel")
 system = sys_map[sel]
 

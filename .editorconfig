@@ -1,0 +1,16 @@
+# Keep source as UTF-8, but prefer ASCII in user-visible strings to avoid mojibake
+# (e.g. em dash shown as "A-" when mis-decoded).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+[*.{sql,yml,yaml,md}]
+indent_style = space
+indent_size = 2

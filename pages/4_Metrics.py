@@ -33,7 +33,7 @@ act_map = {f"Step {a['step_order']} / {a['name']}": a["id"] for a in actions}
 sel_act = st.selectbox("Action", list(act_map.keys()))
 action_id = act_map[sel_act]
 
-# ── Add new metric ─────────────────────────────────────────────────
+# -- Add new metric -------------------------------------------------
 with st.expander("Add New Metric"):
     with st.form("add_metric", clear_on_submit=True):
         name = st.text_input("Name")
@@ -51,7 +51,7 @@ with st.expander("Add New Metric"):
             except Exception as e:
                 st.error(str(e))
 
-# ── List ───────────────────────────────────────────────────────────
+# -- List -----------------------------------------------------------
 metrics = fetch_all("SELECT * FROM metric WHERE action_id=%s ORDER BY id", (action_id,))
 if not metrics:
     st.info("No metrics for this action yet.")
@@ -59,9 +59,9 @@ if not metrics:
 
 st.dataframe(pd.DataFrame(metrics), use_container_width=True, hide_index=True)
 
-# ── Edit / Delete ──────────────────────────────────────────────────
+# -- Edit / Delete --------------------------------------------------
 st.subheader("Edit / Delete")
-met_map = {f"{m['id']} — {m['name']}": m for m in metrics}
+met_map = {f"{m['id']} - {m['name']}": m for m in metrics}
 sel = st.selectbox("Select metric", list(met_map.keys()), key="met_sel")
 metric = met_map[sel]
 

@@ -13,11 +13,11 @@ if not workflows:
 
 wf_map = {w["name"]: w["id"] for w in workflows}
 
-# ── Filter by workflow ─────────────────────────────────────────────
+# -- Filter by workflow ---------------------------------------------
 sel_wf = st.selectbox("Workflow", list(wf_map.keys()))
 wf_id = wf_map[sel_wf]
 
-# ── Add new step ───────────────────────────────────────────────────
+# -- Add new step ---------------------------------------------------
 with st.expander("Add New Step"):
     with st.form("add_step", clear_on_submit=True):
         name = st.text_input("Name")
@@ -34,7 +34,7 @@ with st.expander("Add New Step"):
             except Exception as e:
                 st.error(str(e))
 
-# ── List steps ─────────────────────────────────────────────────────
+# -- List steps -----------------------------------------------------
 steps = fetch_all(
     "SELECT * FROM operation_step WHERE workflow_id=%s ORDER BY step_order", (wf_id,)
 )
@@ -44,7 +44,7 @@ if not steps:
 
 st.dataframe(pd.DataFrame(steps), use_container_width=True, hide_index=True)
 
-# ── Edit / Delete ──────────────────────────────────────────────────
+# -- Edit / Delete --------------------------------------------------
 st.subheader("Edit / Delete")
 step_map = {f"Step {s['step_order']}: {s['name']}": s for s in steps}
 sel = st.selectbox("Select step", list(step_map.keys()), key="step_sel")

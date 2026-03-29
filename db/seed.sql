@@ -1,5 +1,5 @@
 /*
-  Enterprise Intelligence — Seed Data
+  Enterprise Intelligence - Seed Data
 
   Populates two complete workflow chains (Procure-to-Pay and Order-to-Cash)
   to demonstrate how the six layers link together.
@@ -7,18 +7,18 @@
 
 BEGIN;
 
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Layer 6: Systems
--- ═══════════════════════════════════════════════
+-- ===============================================
 INSERT INTO system (id, name, description, system_type, vendor) VALUES
 (1, 'SAP S/4HANA',           'Core ERP system',                                'ERP', 'SAP'),
 (2, 'Salesforce CRM',        'Customer relationship management',               'CRM', 'Salesforce'),
 (3, 'SAP Extended Warehouse', 'Warehouse management system',                   'WMS', 'SAP'),
 (4, 'SuccessFactors',        'Human capital management',                       'HCM', 'SAP');
 
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Layer 5: Data Elements
--- ═══════════════════════════════════════════════
+-- ===============================================
 INSERT INTO data_element (id, name, description, data_type) VALUES
 -- Procurement-related
 (1,  'Purchase Requisition Date',     'Date a purchase requisition was created',          'date'),
@@ -43,18 +43,18 @@ INSERT INTO data_element (id, name, description, data_type) VALUES
 (19, 'Customer ID',                   'Unique identifier of the customer',                 'text'),
 (20, 'Days Sales Outstanding',        'Number of days to collect payment',                 'integer');
 
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Layer 1: Workflows
--- ═══════════════════════════════════════════════
+-- ===============================================
 INSERT INTO workflow (id, name, description) VALUES
 (1, 'Procure-to-Pay',    'End-to-end procurement cycle from requisition through payment to vendor'),
 (2, 'Order-to-Cash',     'End-to-end sales cycle from sales order through cash collection'),
 (3, 'Plan-to-Produce',   'Production planning through manufacturing execution and output'),
 (4, 'Hire-to-Retire',    'Employee lifecycle from recruitment through retirement');
 
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Layer 2: Operation Steps
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Procure-to-Pay steps
 INSERT INTO operation_step (id, workflow_id, name, description, step_order) VALUES
 (1, 1, 'Requisition',           'Identify and request goods or services needed',                     1),
@@ -70,9 +70,9 @@ INSERT INTO operation_step (id, workflow_id, name, description, step_order) VALU
 (8, 2, 'Billing',               'Generate and send invoice to customer',                             3),
 (9, 2, 'Cash Collection',       'Receive and apply customer payment',                                4);
 
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Layer 3: Actions
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Procure-to-Pay actions
 INSERT INTO action (id, operation_step_id, name, description, action_type) VALUES
 (1,  1, 'Approve Purchase Requisition',  'Review and authorize the purchase request',                 'approval'),
@@ -93,9 +93,9 @@ INSERT INTO action (id, operation_step_id, name, description, action_type) VALUE
 (13, 9, 'Apply Customer Payment',        'Match incoming payment to open invoice',                    'execution'),
 (14, 9, 'Adjust Outstanding Balance',    'Correct discrepancies in customer account',                 'adjustment');
 
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Layer 4: Metrics
--- ═══════════════════════════════════════════════
+-- ===============================================
 -- Procure-to-Pay metrics
 INSERT INTO metric (id, action_id, name, description, unit, direction) VALUES
 (1,  1, 'Requisition Approval Cycle Time',     'Days from requisition creation to approval',             'days',    'lower_is_better'),
@@ -116,14 +116,14 @@ INSERT INTO metric (id, action_id, name, description, unit, direction) VALUES
 (13, 13, 'Days Sales Outstanding',             'Average days to collect payment after invoicing',          'days',    'lower_is_better'),
 (14, 14, 'Dispute Resolution Time',            'Average days to resolve payment discrepancies',            'days',    'lower_is_better');
 
--- ═══════════════════════════════════════════════
--- Junction: Metric ↔ Data Element
--- ═══════════════════════════════════════════════
+-- ===============================================
+-- Junction: Metric <-> Data Element
+-- ===============================================
 INSERT INTO metric_data_element (metric_id, data_element_id, role) VALUES
--- Requisition Approval Cycle Time = PO Date − Requisition Date
+-- Requisition Approval Cycle Time = PO Date - Requisition Date
 (1, 1, 'input'),
 (1, 3, 'input'),
--- Vendor Lead Time = Goods Receipt Date − PO Date
+-- Vendor Lead Time = Goods Receipt Date - PO Date
 (2, 3, 'input'),
 (2, 4, 'input'),
 (2, 10, 'dimension'),
@@ -138,7 +138,7 @@ INSERT INTO metric_data_element (metric_id, data_element_id, role) VALUES
 -- Payment On-Time Rate
 (6, 8, 'input'),
 (6, 9, 'numerator'),
--- On-Time Delivery Rate = Actual ≤ Requested
+-- On-Time Delivery Rate = Actual <= Requested
 (10, 13, 'input'),
 (10, 14, 'input'),
 (10, 19, 'dimension'),
@@ -146,14 +146,14 @@ INSERT INTO metric_data_element (metric_id, data_element_id, role) VALUES
 (11, 15, 'numerator'),
 -- Billing Accuracy Rate
 (12, 16, 'numerator'),
--- Days Sales Outstanding = Customer Payment Date − Invoice Date (via Billing Date proxy)
+-- Days Sales Outstanding = Customer Payment Date - Invoice Date (via Billing Date proxy)
 (13, 17, 'input'),
 (13, 20, 'numerator'),
 (13, 19, 'dimension');
 
--- ═══════════════════════════════════════════════
--- Junction: Data Element ↔ System
--- ═══════════════════════════════════════════════
+-- ===============================================
+-- Junction: Data Element <-> System
+-- ===============================================
 INSERT INTO data_element_system (data_element_id, system_id, source_table, source_field) VALUES
 -- SAP S/4HANA procurement tables
 (1,  1, 'EBAN',  'BADAT'),

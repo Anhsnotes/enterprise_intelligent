@@ -8,15 +8,15 @@ st.caption("Manage the cross-layer relationships that form the lineage chain.")
 
 DE_ROLES = ["numerator", "denominator", "filter", "dimension", "input"]
 
-tab_mde, tab_des = st.tabs(["Metric ↔ Data Element", "Data Element ↔ System"])
+tab_mde, tab_des = st.tabs(["Metric <-> Data Element", "Data Element <-> System"])
 
-# ═══════════════════════════════════════════════════════════════════
-# Tab 1 — Metric ↔ Data Element
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
+# Tab 1 - Metric <-> Data Element
+# ===================================================================
 with tab_mde:
-    st.subheader("Metric ↔ Data Element")
+    st.subheader("Metric <-> Data Element")
 
-    # ── Current links ──────────────────────────────────────────────
+    # -- Current links ----------------------------------------------
     links_mde = fetch_all("""
         SELECT
             mde.metric_id, m.name AS metric,
@@ -31,9 +31,9 @@ with tab_mde:
     if links_mde:
         st.dataframe(pd.DataFrame(links_mde), use_container_width=True, hide_index=True)
     else:
-        st.info("No metric ↔ data element links yet.")
+        st.info("No metric <-> data element links yet.")
 
-    # ── Add link ───────────────────────────────────────────────────
+    # -- Add link ---------------------------------------------------
     st.markdown("---")
     st.markdown("**Add Link**")
 
@@ -69,12 +69,12 @@ with tab_mde:
     else:
         st.warning("Need at least one metric and one data element to create a link.")
 
-    # ── Remove link ────────────────────────────────────────────────
+    # -- Remove link ------------------------------------------------
     if links_mde:
         st.markdown("---")
         st.markdown("**Remove Link**")
         link_labels = {
-            f"{l['metric']}  ←  {l['data_element']} [{l['role']}]": l
+            f"{l['metric']} <- {l['data_element']} [{l['role']}]": l
             for l in links_mde
         }
         sel_rm = st.selectbox("Select link to remove", list(link_labels.keys()), key="rm_mde")
@@ -88,13 +88,13 @@ with tab_mde:
             st.rerun()
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Tab 2 — Data Element ↔ System
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
+# Tab 2 - Data Element <-> System
+# ===================================================================
 with tab_des:
-    st.subheader("Data Element ↔ System")
+    st.subheader("Data Element <-> System")
 
-    # ── Current links ──────────────────────────────────────────────
+    # -- Current links ----------------------------------------------
     links_des = fetch_all("""
         SELECT
             des.data_element_id, de.name AS data_element,
@@ -109,9 +109,9 @@ with tab_des:
     if links_des:
         st.dataframe(pd.DataFrame(links_des), use_container_width=True, hide_index=True)
     else:
-        st.info("No data element ↔ system links yet.")
+        st.info("No data element <-> system links yet.")
 
-    # ── Add link ───────────────────────────────────────────────────
+    # -- Add link ---------------------------------------------------
     st.markdown("---")
     st.markdown("**Add Link**")
 
@@ -142,12 +142,12 @@ with tab_des:
     else:
         st.warning("Need at least one data element and one system to create a link.")
 
-    # ── Remove link ────────────────────────────────────────────────
+    # -- Remove link ------------------------------------------------
     if links_des:
         st.markdown("---")
         st.markdown("**Remove Link**")
         link_labels2 = {
-            f"{l['data_element']}  →  {l['system']} ({l['source_table']}.{l['source_field']})": l
+            f"{l['data_element']} -> {l['system']} ({l['source_table']}.{l['source_field']})": l
             for l in links_des
         }
         sel_rm2 = st.selectbox("Select link to remove", list(link_labels2.keys()), key="rm_des")
