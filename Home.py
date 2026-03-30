@@ -19,7 +19,10 @@ if not workflows:
     st.stop()
 
 wf_options = {w["name"]: w for w in workflows}
-selected_name = st.selectbox("Workflow", list(wf_options.keys()))
+_wf_names = list(wf_options.keys())
+_DEFAULT_WF = "Procure-to-Pay"
+_wf_idx = _wf_names.index(_DEFAULT_WF) if _DEFAULT_WF in wf_options else 0
+selected_name = st.selectbox("Workflow", _wf_names, index=_wf_idx)
 wf = wf_options[selected_name]
 
 if wf["description"]:
@@ -119,9 +122,9 @@ c4.metric("Data Elements", n_des)
 
 st.divider()
 
-# -- Tabs: Tree vs Mermaid flowchart vs Table -----------------------
-tab_tree, tab_mermaid, tab_table = st.tabs(
-    ["Lineage Tree", "Lineage Flowchart (Mermaid)", "Lineage Table"]
+# -- Tabs: Mermaid first, then Tree, then Table --------------------
+tab_mermaid, tab_tree, tab_table = st.tabs(
+    ["Lineage Flowchart", "Lineage Tree", "Lineage Table"]
 )
 
 DIRECTION_SYM = {"higher_is_better": "^ higher is better", "lower_is_better": "v lower is better", "target": "* target"}
@@ -132,6 +135,34 @@ LAYER_COLORS = {
     "de":     "#7B1FA2",
     "system": "#546E7A",
 }
+
+
+def flowchart_legend_html() -> str:
+    """Swatches aligned with Mermaid classDef (wf, st, ac, mt, de, sy) in build_mermaid_flowchart."""
+    items = (
+        ("#1565c0", "#0d47a1", "Workflow"),
+        ("#1976d2", "#0d47a1", "Operation step"),
+        ("#2e7d32", "#1b5e20", "Action"),
+        ("#c62828", "#b71c1c", "Metric"),
+        ("#6a1b9a", "#4a148c", "Data element"),
+        ("#455a64", "#263238", "System (source field)"),
+    )
+    chips = []
+    for fill, stroke, label in items:
+        chips.append(
+            f'<span style="display:inline-flex;align-items:center;gap:6px;font-size:0.9em">'
+            f'<span style="display:inline-block;width:14px;height:14px;border-radius:3px;'
+            f"background:{fill};border:2px solid {stroke};flex-shrink:0\"></span>"
+            f"{label}</span>"
+        )
+    inner = " ".join(chips)
+    return (
+        '<div style="display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;'
+        "margin:0 0 12px 0;padding:10px 14px;border:1px solid rgba(127,127,127,0.28);"
+        'border-radius:8px;background:rgba(128,128,128,0.06);">'
+        '<strong style="margin-right:4px;font-size:0.95em">Legend</strong>'
+        f"{inner}</div>"
+    )
 
 
 def render_tree_html(tree):
@@ -341,9 +372,9 @@ def render_mermaid_html(diagram_source: str, height: int = 920):
   <div id="toolbar">
     <span style="color:#888;margin-right:4px">Zoom</span>
     <button type="button" id="zoomOut" title="Zoom out">-</button>
-    <button type="button" id="zoomReset" title="100%">Reset</button>
+    <button type="button" id="zoomReset" title="Reset to default (400%)">Reset</button>
     <button type="button" id="zoomIn" title="Zoom in">+</button>
-    <span id="zoomPct">100%</span>
+    <span id="zoomPct">400%</span>
     <span style="color:#666;font-size:11px;margin-left:8px">or hold Ctrl/Cmd and scroll wheel</span>
   </div>
   <div id="viewport">
@@ -358,7 +389,8 @@ def render_mermaid_html(diagram_source: str, height: int = 920):
       const zoomInner = document.getElementById("zoom-inner");
       const viewport = document.getElementById("viewport");
       const zoomPct = document.getElementById("zoomPct");
-      let scale = 1;
+      const DEFAULT_ZOOM = 4;
+      let scale = DEFAULT_ZOOM;
       const MIN = 0.25, MAX = 10;
 
       function applyScale() {{
@@ -386,7 +418,7 @@ def render_mermaid_html(diagram_source: str, height: int = 920):
         applyScale();
       }};
       document.getElementById("zoomReset").onclick = function () {{
-        scale = 1;
+        scale = DEFAULT_ZOOM;
         applyScale();
         viewport.scrollTop = 0;
         viewport.scrollLeft = 0;
@@ -407,12 +439,6 @@ def render_mermaid_html(diagram_source: str, height: int = 920):
     components.html(html_page, height=height, scrolling=True)
 
 
-with tab_tree:
-    if not tree:
-        st.info("This workflow has no operation steps yet.")
-    else:
-        st.markdown(render_tree_html(tree), unsafe_allow_html=True)
-
 with tab_mermaid:
     st.caption(
         "Interactive flowchart powered by [Mermaid.js](https://mermaid.js.org/) "
@@ -423,20 +449,29 @@ with tab_mermaid:
     if not tree:
         st.info("This workflow has no operation steps yet.")
     else:
-        mermaid_dir = st.radio(
-            "Diagram layout",
-            ("TB", "LR"),
-            horizontal=True,
-            format_func=lambda d: "Top -> bottom"
-            if d == "TB"
-            else "Left -> right (sideways)",
-            help="Mermaid `flowchart TB` draws top-down; `flowchart LR` runs the main flow left-to-right.",
-        )
+        col_layout, _ = st.columns([1, 4])
+        with col_layout:
+            mermaid_dir = st.radio(
+                "Diagram layout",
+                ("LR", "TB"),
+                horizontal=True,
+                index=0,
+                format_func=lambda d: "Left -> right"
+                if d == "LR"
+                else "Top -> bottom",
+                help="`flowchart LR` runs left-to-right; `flowchart TB` runs top-down.",
+            )
+        st.markdown(flowchart_legend_html(), unsafe_allow_html=True)
         mermaid_src = build_mermaid_flowchart(wf, tree, direction=mermaid_dir)
         with st.expander("View / copy Mermaid source"):
             st.code(mermaid_src, language="mermaid")
-        # Tall iframe: large lineages scroll inside the component
         render_mermaid_html(mermaid_src, height=950)
+
+with tab_tree:
+    if not tree:
+        st.info("This workflow has no operation steps yet.")
+    else:
+        st.markdown(render_tree_html(tree), unsafe_allow_html=True)
 
 with tab_table:
     if not rows:
