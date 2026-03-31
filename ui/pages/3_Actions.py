@@ -1,6 +1,12 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 import streamlit as st
 import pandas as pd
 from db import fetch_all, execute
+from ui.workflow_ui import sql_order_category, workflow_options_by_category
 
 st.set_page_config(page_title="Actions", layout="wide")
 st.title("Actions")
@@ -8,14 +14,14 @@ st.caption("Control decisions and actions taken at each operation step.")
 
 ACTION_TYPES = ["decision", "approval", "execution", "review", "adjustment"]
 
-workflows = fetch_all("SELECT id, name FROM workflow ORDER BY name")
+workflows = fetch_all(f"SELECT id, name, category FROM workflow {sql_order_category()}")
 if not workflows:
     st.info("Create a workflow first.")
     st.stop()
 
-wf_map = {w["name"]: w["id"] for w in workflows}
-sel_wf = st.selectbox("Workflow", list(wf_map.keys()))
-wf_id = wf_map[sel_wf]
+_wf_labels, _wf_map = workflow_options_by_category(workflows)
+sel_wf = st.selectbox("Workflow", _wf_labels)
+wf_id = _wf_map[sel_wf]["id"]
 
 steps = fetch_all(
     "SELECT id, name, step_order FROM operation_step WHERE workflow_id=%s ORDER BY step_order",

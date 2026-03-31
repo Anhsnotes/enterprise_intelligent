@@ -2,6 +2,14 @@
 
 A framework for standardizing decision-making across enterprises by redesigning Business Intelligence from the ground up.
 
+## Streamlit UI
+
+The app code is under `ui/`: entry point `ui/Home.py`, multi-page routes in `ui/pages/`, and shared helpers in `ui/workflow_ui.py`. The database module stays at the repository root (`db.py`). From the repo root:
+
+```bash
+streamlit run ui/Home.py
+```
+
 ## Motivation
 
 Business Intelligence has long struggled to keep pace with the rate of change in business. Despite its promise of delivering actionable, data-driven insight, BI consistently falls short. The root cause is structural: every BI project carries technical debt from its inception, and that debt compounds over time. Each dashboard, report, and data pipeline is built to serve an isolated use case, with its own assumptions, definitions, and data lineage. The result is a landscape of fragmented artifacts that cannot be consolidated to tell a consistent, end-to-end story across departments.
@@ -41,6 +49,20 @@ Enterprise Intelligence addresses this by providing a layered framework that map
 By starting from workflows rather than from tools or datasets, the framework ensures that intelligence is organized around what the business does - not around what was convenient to build. This makes it possible to consolidate BI artifacts into a unified, consistent layer that serves the entire enterprise.
 
 The framework is designed to support businesses at any scale, from a small operation running a single ERP to a large enterprise with dozens of systems and thousands of users. The goal is to set a concrete foundation for Enterprise Intelligence from the very start - one that grows with the organization rather than accumulating debt against it.
+
+## Reference workflows (by category)
+
+Workflows are stored with a **category** so lists and the lineage viewer stay easy to scan. The seed data includes:
+
+| Category | Workflows |
+|----------|-----------|
+| Finance & Control | Record-to-Report (R2R) |
+| Sales & Revenue | Order-to-Cash; Lead-to-Order / Opportunity-to-Order |
+| Procurement & Supply Chain | Procure-to-Pay; Source-to-Pay / Source-to-Contract |
+| Operations & Manufacturing | Plan-to-Produce |
+| Human Capital | Hire-to-Retire |
+
+The seed includes full operation-step, action, metric, and lineage chains for all seven workflows. Existing databases created before `workflow.category` or before these chains were added should run `db/migration_workflow_category.sql` if needed, then reload or migrate seed data.
 
 ## License
 

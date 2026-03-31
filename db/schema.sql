@@ -18,6 +18,7 @@ CREATE TABLE workflow (
     id            SERIAL PRIMARY KEY,
     name          VARCHAR(200) NOT NULL UNIQUE,
     description   TEXT,
+    category      VARCHAR(120),
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
@@ -127,6 +128,7 @@ CREATE TABLE data_element_system (
 -- ---------------------------------------------
 -- Indexes for common query patterns
 -- ---------------------------------------------
+CREATE INDEX idx_workflow_category        ON workflow(category);
 CREATE INDEX idx_operation_step_workflow  ON operation_step(workflow_id);
 CREATE INDEX idx_action_operation_step    ON action(operation_step_id);
 CREATE INDEX idx_metric_action            ON metric(action_id);

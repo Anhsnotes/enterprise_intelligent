@@ -1,6 +1,12 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 import streamlit as st
 import pandas as pd
 from db import fetch_all, execute
+from ui.workflow_ui import label_workflow
 
 st.set_page_config(page_title="Linkages", layout="wide")
 st.title("Linkages")
@@ -38,17 +44,24 @@ with tab_mde:
     st.markdown("**Add Link**")
 
     metrics = fetch_all("""
-        SELECT m.id, m.name, a.name AS action, os.name AS step, w.name AS workflow
+        SELECT m.id, m.name, a.name AS action, os.name AS step,
+               w.name AS workflow, w.category AS workflow_cat
         FROM metric m
         JOIN action a          ON a.id  = m.action_id
         JOIN operation_step os ON os.id = a.operation_step_id
         JOIN workflow w        ON w.id  = os.workflow_id
-        ORDER BY w.name, os.step_order, m.name
+        ORDER BY w.category NULLS LAST, w.name, os.step_order, m.name
     """)
     data_elements = fetch_all("SELECT id, name FROM data_element ORDER BY name")
 
     if metrics and data_elements:
-        met_opts = {f"{m['workflow']} / {m['step']} / {m['name']}": m["id"] for m in metrics}
+        def _met_label(row: dict) -> str:
+            wf_part = label_workflow(
+                {"name": row["workflow"], "category": row.get("workflow_cat")}
+            )
+            return f"{wf_part} / {row['step']} / {row['name']}"
+
+        met_opts = {_met_label(m): m["id"] for m in metrics}
         de_opts = {d["name"]: d["id"] for d in data_elements}
 
         with st.form("add_mde", clear_on_submit=True):

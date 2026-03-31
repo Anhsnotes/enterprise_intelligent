@@ -1,21 +1,27 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 import streamlit as st
 import pandas as pd
 from db import fetch_all, execute
+from ui.workflow_ui import sql_order_category, workflow_options_by_category
 
 st.set_page_config(page_title="Operation Steps", layout="wide")
 st.title("Operation Steps")
 st.caption("Discrete phases within each workflow, ordered sequentially.")
 
-workflows = fetch_all("SELECT id, name FROM workflow ORDER BY name")
+workflows = fetch_all(f"SELECT id, name, category FROM workflow {sql_order_category()}")
 if not workflows:
     st.info("Create a workflow first.")
     st.stop()
 
-wf_map = {w["name"]: w["id"] for w in workflows}
+_wf_labels, _wf_map = workflow_options_by_category(workflows)
 
 # -- Filter by workflow ---------------------------------------------
-sel_wf = st.selectbox("Workflow", list(wf_map.keys()))
-wf_id = wf_map[sel_wf]
+sel_wf = st.selectbox("Workflow", _wf_labels)
+wf_id = _wf_map[sel_wf]["id"]
 
 # -- Add new step ---------------------------------------------------
 with st.expander("Add New Step"):

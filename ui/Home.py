@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+_p = Path(__file__).resolve().parent
+sys.path.insert(0, str(_p.parent))
+
 import base64
 import re
 import streamlit as st
@@ -5,6 +11,7 @@ import streamlit.components.v1 as components
 import pandas as pd
 from collections import OrderedDict
 from db import fetch_all
+from ui.workflow_ui import sql_order_category, workflow_options_by_category
 
 st.set_page_config(page_title="Home", layout="wide")
 
@@ -12,18 +19,22 @@ st.title("Enterprise Intelligence")
 st.markdown("**Lineage Viewer** - trace every workflow from business cycle down to source system field.")
 
 # -- Workflow selector ----------------------------------------------
-workflows = fetch_all("SELECT id, name, description FROM workflow ORDER BY name")
+workflows = fetch_all(
+    f"SELECT id, name, description, category FROM workflow {sql_order_category()}"
+)
 
 if not workflows:
     st.info("No workflows found. Use the **Workflows** page to add one.")
     st.stop()
 
-wf_options = {w["name"]: w for w in workflows}
-_wf_names = list(wf_options.keys())
+_wf_labels, wf_options = workflow_options_by_category(workflows)
 _DEFAULT_WF = "Procure-to-Pay"
-_wf_idx = _wf_names.index(_DEFAULT_WF) if _DEFAULT_WF in wf_options else 0
-selected_name = st.selectbox("Workflow", _wf_names, index=_wf_idx)
-wf = wf_options[selected_name]
+_wf_idx = next(
+    (i for i, lab in enumerate(_wf_labels) if wf_options[lab]["name"] == _DEFAULT_WF),
+    0,
+)
+selected_label = st.selectbox("Workflow", _wf_labels, index=_wf_idx)
+wf = wf_options[selected_label]
 
 if wf["description"]:
     st.caption(wf["description"])
