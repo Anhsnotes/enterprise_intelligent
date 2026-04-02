@@ -53,11 +53,17 @@ CREATE TABLE action (
 );
 
 -- ---------------------------------------------
--- Layer 4: Control Metrics
+-- Layer 4: Metrics (control + rolled-up workflow / cross-workflow / executive)
+-- Control metrics (metric_level = control) attach to an action.
+-- Higher levels roll up from child metrics via metric_rollup (no L0 data elements required).
 -- ---------------------------------------------
 CREATE TABLE metric (
     id            SERIAL PRIMARY KEY,
-    action_id     INT          NOT NULL REFERENCES action(id) ON DELETE CASCADE,
+    action_id     INT          REFERENCES action(id) ON DELETE CASCADE,
+    workflow_id   INT          REFERENCES workflow(id) ON DELETE SET NULL,
+    metric_level  VARCHAR(30)  NOT NULL DEFAULT 'control' CHECK (metric_level IN (
+                      'control', 'workflow', 'cross_workflow', 'executive'
+                  )),
     name          VARCHAR(200) NOT NULL,
     description   TEXT,
     unit          VARCHAR(50),
@@ -65,7 +71,25 @@ CREATE TABLE metric (
                       'higher_is_better', 'lower_is_better', 'target'
                   )),
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT metric_level_scope_ck CHECK (
+        (metric_level = 'control' AND action_id IS NOT NULL AND workflow_id IS NULL)
+        OR (metric_level = 'workflow' AND action_id IS NULL AND workflow_id IS NOT NULL)
+        OR (metric_level IN ('cross_workflow', 'executive') AND action_id IS NULL AND workflow_id IS NULL)
+    )
+);
+
+-- Parent metric composed of child metrics (L1 control -> L2 -> L3 -> L4).
+CREATE TABLE metric_rollup (
+    parent_metric_id INT NOT NULL REFERENCES metric(id) ON DELETE CASCADE,
+    child_metric_id  INT NOT NULL REFERENCES metric(id) ON DELETE CASCADE,
+    rollup_rule      VARCHAR(40) NOT NULL CHECK (rollup_rule IN (
+                          'weighted_average', 'sum', 'min', 'max', 'structural', 'ratio'
+                      )),
+    sort_order       INT NOT NULL DEFAULT 0,
+    notes            TEXT,
+    PRIMARY KEY (parent_metric_id, child_metric_id),
+    CHECK (parent_metric_id <> child_metric_id)
 );
 
 -- ---------------------------------------------
@@ -132,6 +156,10 @@ CREATE INDEX idx_workflow_category        ON workflow(category);
 CREATE INDEX idx_operation_step_workflow  ON operation_step(workflow_id);
 CREATE INDEX idx_action_operation_step    ON action(operation_step_id);
 CREATE INDEX idx_metric_action            ON metric(action_id);
+CREATE INDEX idx_metric_workflow          ON metric(workflow_id);
+CREATE INDEX idx_metric_level             ON metric(metric_level);
+CREATE INDEX idx_metric_rollup_parent     ON metric_rollup(parent_metric_id);
+CREATE INDEX idx_metric_rollup_child      ON metric_rollup(child_metric_id);
 CREATE INDEX idx_mde_data_element         ON metric_data_element(data_element_id);
 CREATE INDEX idx_des_system               ON data_element_system(system_id);
 

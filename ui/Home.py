@@ -4,43 +4,30 @@ from pathlib import Path
 _p = Path(__file__).resolve().parent
 sys.path.insert(0, str(_p.parent))
 
-import base64
-import re
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 from collections import OrderedDict
 from db import fetch_all
-from ui.workflow_ui import sql_order_category, workflow_options_by_category
+from ui.workflow_ui import (
+    build_metric_hierarchy_mermaid,
+    hierarchy_flowchart_legend_html,
+    mermaid_escape_label,
+    render_mermaid_html,
+    sql_order_category,
+    workflow_options_by_category,
+)
 
 st.set_page_config(page_title="Home", layout="wide")
 
 st.title("Enterprise Intelligence")
-st.markdown("**Lineage Viewer** - trace every workflow from business cycle down to source system field.")
-
-# -- Workflow selector ----------------------------------------------
-workflows = fetch_all(
-    f"SELECT id, name, description, category FROM workflow {sql_order_category()}"
+st.caption(
+    "Workflow **lineage** (cycle → source field) and **metric hierarchy** "
+    "(control metrics rolling up to executive outcomes)."
 )
 
-if not workflows:
-    st.info("No workflows found. Use the **Workflows** page to add one.")
-    st.stop()
+tab_lineage, tab_hierarchy = st.tabs(["Workflow lineage", "Metric hierarchy"])
 
-_wf_labels, wf_options = workflow_options_by_category(workflows)
-_DEFAULT_WF = "Procure-to-Pay"
-_wf_idx = next(
-    (i for i, lab in enumerate(_wf_labels) if wf_options[lab]["name"] == _DEFAULT_WF),
-    0,
-)
-selected_label = st.selectbox("Workflow", _wf_labels, index=_wf_idx)
-wf = wf_options[selected_label]
-
-if wf["description"]:
-    st.caption(wf["description"])
-
-
-# -- Fetch full lineage in one query --------------------------------
+# -- Workflow lineage ---------------------------------------------------------
 LINEAGE_SQL = """
 SELECT
     os.id   AS step_id,   os.name AS step_name,   os.description AS step_desc,   os.step_order,
@@ -59,10 +46,7 @@ WHERE os.workflow_id = %s
 ORDER BY os.step_order, a.id, m.id, de.name, s.name
 """
 
-rows = fetch_all(LINEAGE_SQL, (wf["id"],))
 
-
-# -- Build nested tree from flat rows ------------------------------
 def build_tree(rows):
     steps = OrderedDict()
     for r in rows:
@@ -110,33 +94,6 @@ def build_tree(rows):
                 })
     return steps
 
-
-tree = build_tree(rows)
-
-# -- Summary metrics ------------------------------------------------
-n_steps = len(tree)
-n_actions = sum(len(s["actions"]) for s in tree.values())
-n_metrics = sum(len(m) for s in tree.values() for m in [a["metrics"] for a in s["actions"].values()])
-n_des = len({
-    de_key
-    for s in tree.values()
-    for a in s["actions"].values()
-    for m in a["metrics"].values()
-    for de_key in m["data_elements"]
-})
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Steps", n_steps)
-c2.metric("Actions", n_actions)
-c3.metric("Metrics", n_metrics)
-c4.metric("Data Elements", n_des)
-
-st.divider()
-
-# -- Tabs: Mermaid first, then Tree, then Table --------------------
-tab_mermaid, tab_tree, tab_table = st.tabs(
-    ["Lineage Flowchart", "Lineage Tree", "Lineage Table"]
-)
 
 DIRECTION_SYM = {"higher_is_better": "^ higher is better", "lower_is_better": "v lower is better", "target": "* target"}
 LAYER_COLORS = {
@@ -237,18 +194,6 @@ def render_tree_html(tree):
     return "".join(parts)
 
 
-def _mermaid_escape_label(text, max_len=72):
-    if text is None:
-        return ""
-    s = str(text).replace("\n", " ").replace("\r", " ")
-    s = re.sub(r"\s+", " ", s).strip()
-    if len(s) > max_len:
-        s = s[: max_len - 1] + "..."
-    # Avoid breaking Mermaid ["..."] node syntax
-    s = s.replace('"', "'").replace("[", "(").replace("]", ")")
-    return s
-
-
 def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
     """Build Mermaid flowchart from workflow + nested tree. direction: TB (vertical) or LR (sideways / left-to-right)."""
     direction = (direction or "TB").upper()
@@ -269,7 +214,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
 
     wf_id = wf["id"]
     wf_node = f"WF{wf_id}"
-    wf_lbl = _mermaid_escape_label(f"Workflow: {wf['name']}")
+    wf_lbl = mermaid_escape_label(f"Workflow: {wf['name']}")
     lines.append(f'  {wf_node}["{wf_lbl}"]:::wf')
 
     if not tree:
@@ -278,7 +223,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
 
     for sid, step in tree.items():
         st_node = f"S{sid}"
-        st_lbl = _mermaid_escape_label(f"Step {step['order']}: {step['name']}")
+        st_lbl = mermaid_escape_label(f"Step {step['order']}: {step['name']}")
         lines.append(f'  {st_node}["{st_lbl}"]:::st')
         lines.append(f"  {wf_node} --> {st_node}")
 
@@ -287,7 +232,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
 
         for aid, action in step["actions"].items():
             ac_node = f"A{aid}"
-            ac_lbl = _mermaid_escape_label(f"{action['name']} ({action['type']})")
+            ac_lbl = mermaid_escape_label(f"{action['name']} ({action['type']})")
             lines.append(f'  {ac_node}["{ac_lbl}"]:::ac')
             lines.append(f"  {st_node} --> {ac_node}")
 
@@ -298,7 +243,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
                 mt_node = f"M{mid}"
                 unit = metric.get("unit") or " - "
                 direction = (metric.get("direction") or "").replace("_", " ")
-                mt_lbl = _mermaid_escape_label(f"{metric['name']} [{unit}, {direction}]")
+                mt_lbl = mermaid_escape_label(f"{metric['name']} [{unit}, {direction}]")
                 lines.append(f'  {mt_node}["{mt_lbl}"]:::mt')
                 lines.append(f"  {ac_node} --> {mt_node}")
 
@@ -308,7 +253,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
                 for (de_id, role), de in metric["data_elements"].items():
                     role_s = (role or "link").replace(" ", "_")
                     de_node = f"DE{de_id}_{role_s}"
-                    de_lbl = _mermaid_escape_label(f"{de['name']}, role: {role}")
+                    de_lbl = mermaid_escape_label(f"{de['name']}, role: {role}")
                     lines.append(f'  {de_node}["{de_lbl}"]:::de')
                     lines.append(f"  {mt_node} --> {de_node}")
 
@@ -319,7 +264,7 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
                         tbl = sysrow.get("table") or "?"
                         fld = sysrow.get("field") or "?"
                         sy_node = f"SY{sysrow['id']}_DE{de_id}_{idx}"
-                        sy_lbl = _mermaid_escape_label(
+                        sy_lbl = mermaid_escape_label(
                             f"{sysrow['name']}: {tbl}.{fld}"
                         )
                         lines.append(f'  {sy_node}["{sy_lbl}"]:::sy')
@@ -329,178 +274,318 @@ def build_mermaid_flowchart(wf, tree, direction: str = "TB"):
     return "\n".join(lines)
 
 
-def render_mermaid_html(diagram_source: str, height: int = 920):
-    """Render Mermaid via CDN inside a Streamlit HTML component (base64 payload avoids escaping issues)."""
-    b64 = base64.standard_b64encode(diagram_source.encode("utf-8")).decode("ascii")
-    html_page = f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
-  <style>
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      background: transparent;
-      font-family: system-ui, sans-serif;
-      font-size: 13px;
-    }}
-    #toolbar {{
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.12);
-      background: rgba(0,0,0,0.25);
-    }}
-    #toolbar button {{
-      padding: 4px 10px;
-      border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.2);
-      background: rgba(255,255,255,0.08);
-      color: #e0e0e0;
-      cursor: pointer;
-    }}
-    #toolbar button:hover {{ background: rgba(255,255,255,0.15); }}
-    #zoomPct {{ min-width: 44px; color: #aaa; }}
-    #viewport {{
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow: auto;
-      padding: 8px;
-    }}
-    #zoom-inner {{
-      transform-origin: top left;
-      display: inline-block;
-    }}
-  </style>
-</head>
-<body>
-  <div id="toolbar">
-    <span style="color:#888;margin-right:4px">Zoom</span>
-    <button type="button" id="zoomOut" title="Zoom out">-</button>
-    <button type="button" id="zoomReset" title="Reset to default (400%)">Reset</button>
-    <button type="button" id="zoomIn" title="Zoom in">+</button>
-    <span id="zoomPct">400%</span>
-    <span style="color:#666;font-size:11px;margin-left:8px">or hold Ctrl/Cmd and scroll wheel</span>
-  </div>
-  <div id="viewport">
-    <div id="zoom-inner">
-      <div id="mmd-out" class="mermaid"></div>
-    </div>
-  </div>
-  <script>
-    (async function () {{
-      const diagram = atob("{b64}");
-      const el = document.getElementById("mmd-out");
-      const zoomInner = document.getElementById("zoom-inner");
-      const viewport = document.getElementById("viewport");
-      const zoomPct = document.getElementById("zoomPct");
-      const DEFAULT_ZOOM = 4;
-      let scale = DEFAULT_ZOOM;
-      const MIN = 0.25, MAX = 10;
-
-      function applyScale() {{
-        scale = Math.min(MAX, Math.max(MIN, scale));
-        zoomInner.style.transform = "scale(" + scale + ")";
-        zoomPct.textContent = Math.round(scale * 100) + "%";
-      }}
-
-      el.textContent = diagram;
-      mermaid.initialize({{
-        startOnLoad: false,
-        theme: "dark",
-        securityLevel: "loose",
-        flowchart: {{ useMaxWidth: true, htmlLabels: true, curve: "basis" }}
-      }});
-      await mermaid.run({{ querySelector: "#mmd-out" }});
-      applyScale();
-
-      document.getElementById("zoomIn").onclick = function () {{
-        scale *= 1.15;
-        applyScale();
-      }};
-      document.getElementById("zoomOut").onclick = function () {{
-        scale /= 1.15;
-        applyScale();
-      }};
-      document.getElementById("zoomReset").onclick = function () {{
-        scale = DEFAULT_ZOOM;
-        applyScale();
-        viewport.scrollTop = 0;
-        viewport.scrollLeft = 0;
-      }};
-
-      viewport.addEventListener("wheel", function (e) {{
-        if (e.ctrlKey || e.metaKey) {{
-          e.preventDefault();
-          const delta = e.deltaY > 0 ? -0.08 : 0.08;
-          scale += delta;
-          applyScale();
-        }}
-      }}, {{ passive: false }});
-    }})();
-  </script>
-</body>
-</html>"""
-    components.html(html_page, height=height, scrolling=True)
-
-
-with tab_mermaid:
-    st.caption(
-        "Interactive flowchart powered by [Mermaid.js](https://mermaid.js.org/) "
-        "(workflow -> step -> action -> metric -> data element -> system field). "
-        "**Zoom:** use the **- / + / Reset** bar above the chart inside the frame, or **Ctrl+scroll** "
-        "(**Cmd+scroll** on Mac) while the pointer is over the chart area."
+with tab_lineage:
+    st.markdown(
+        "Trace a **business workflow** from cycle through steps, actions, metrics, "
+        "data elements, and source system fields."
     )
-    if not tree:
-        st.info("This workflow has no operation steps yet.")
+    workflows = fetch_all(
+        f"SELECT id, name, description, category FROM workflow {sql_order_category()}"
+    )
+    if not workflows:
+        st.info("No workflows found. Use the **Workflows** page to add one.")
     else:
-        col_layout, _ = st.columns([1, 4])
-        with col_layout:
-            mermaid_dir = st.radio(
-                "Diagram layout",
-                ("LR", "TB"),
-                horizontal=True,
-                index=0,
-                format_func=lambda d: "Left -> right"
-                if d == "LR"
-                else "Top -> bottom",
-                help="`flowchart LR` runs left-to-right; `flowchart TB` runs top-down.",
-            )
-        st.markdown(flowchart_legend_html(), unsafe_allow_html=True)
-        mermaid_src = build_mermaid_flowchart(wf, tree, direction=mermaid_dir)
-        with st.expander("View / copy Mermaid source"):
-            st.code(mermaid_src, language="mermaid")
-        render_mermaid_html(mermaid_src, height=950)
+        _wf_labels, wf_options = workflow_options_by_category(workflows)
+        _DEFAULT_WF = "Procure-to-Pay"
+        _wf_idx = next(
+            (i for i, lab in enumerate(_wf_labels) if wf_options[lab]["name"] == _DEFAULT_WF),
+            0,
+        )
+        selected_label = st.selectbox("Workflow", _wf_labels, index=_wf_idx)
+        wf = wf_options[selected_label]
 
-with tab_tree:
-    if not tree:
-        st.info("This workflow has no operation steps yet.")
-    else:
-        st.markdown(render_tree_html(tree), unsafe_allow_html=True)
+        if wf["description"]:
+            st.caption(wf["description"])
 
-with tab_table:
-    if not rows:
-        st.info("This workflow has no lineage data yet.")
-    else:
-        df = pd.DataFrame(rows)
-        display_cols = [
-            "step_order", "step_name", "action_name", "action_type",
-            "metric_name", "unit", "direction",
-            "de_name", "de_role", "data_type",
-            "sys_name", "system_type", "source_table", "source_field",
-        ]
-        df = df[[c for c in display_cols if c in df.columns]].rename(columns={
-            "step_order": "Step #", "step_name": "Step", "action_name": "Action",
-            "action_type": "Type", "metric_name": "Metric", "unit": "Unit",
-            "direction": "Direction", "de_name": "Data Element",
-            "de_role": "Role", "data_type": "Data Type",
-            "sys_name": "System", "system_type": "Sys Type",
-            "source_table": "Table", "source_field": "Field",
+        rows = fetch_all(LINEAGE_SQL, (wf["id"],))
+        tree = build_tree(rows)
+
+        n_steps = len(tree)
+        n_actions = sum(len(s["actions"]) for s in tree.values())
+        n_metrics = sum(
+            len(m)
+            for s in tree.values()
+            for m in [a["metrics"] for a in s["actions"].values()]
+        )
+        n_des = len({
+            de_key
+            for s in tree.values()
+            for a in s["actions"].values()
+            for m in a["metrics"].values()
+            for de_key in m["data_elements"]
         })
-        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Steps", n_steps)
+        c2.metric("Actions", n_actions)
+        c3.metric("Metrics", n_metrics)
+        c4.metric("Data Elements", n_des)
+
+        st.divider()
+
+        tab_mermaid, tab_tree, tab_table = st.tabs(
+            ["Lineage Flowchart", "Lineage Tree", "Lineage Table"]
+        )
+
+        with tab_mermaid:
+            st.caption(
+                "Interactive flowchart powered by [Mermaid.js](https://mermaid.js.org/) "
+                "(workflow -> step -> action -> metric -> data element -> system field). "
+                "**Zoom:** use the **- / + / Reset** bar above the chart inside the frame, or **Ctrl+scroll** "
+                "(**Cmd+scroll** on Mac) while the pointer is over the chart area."
+            )
+            if not tree:
+                st.info("This workflow has no operation steps yet.")
+            else:
+                col_layout, _ = st.columns([1, 4])
+                with col_layout:
+                    mermaid_dir = st.radio(
+                        "Diagram layout",
+                        ("LR", "TB"),
+                        horizontal=True,
+                        index=0,
+                        format_func=lambda d: "Left -> right"
+                        if d == "LR"
+                        else "Top -> bottom",
+                        help="`flowchart LR` runs left-to-right; `flowchart TB` runs top-down.",
+                    )
+                st.markdown(flowchart_legend_html(), unsafe_allow_html=True)
+                mermaid_src = build_mermaid_flowchart(wf, tree, direction=mermaid_dir)
+                with st.expander("View / copy Mermaid source"):
+                    st.code(mermaid_src, language="mermaid")
+                render_mermaid_html(mermaid_src, height=950)
+
+        with tab_tree:
+            if not tree:
+                st.info("This workflow has no operation steps yet.")
+            else:
+                st.markdown(render_tree_html(tree), unsafe_allow_html=True)
+
+        with tab_table:
+            if not rows:
+                st.info("This workflow has no lineage data yet.")
+            else:
+                df = pd.DataFrame(rows)
+                display_cols = [
+                    "step_order", "step_name", "action_name", "action_type",
+                    "metric_name", "unit", "direction",
+                    "de_name", "de_role", "data_type",
+                    "sys_name", "system_type", "source_table", "source_field",
+                ]
+                df = df[[c for c in display_cols if c in df.columns]].rename(columns={
+                    "step_order": "Step #", "step_name": "Step", "action_name": "Action",
+                    "action_type": "Type", "metric_name": "Metric", "unit": "Unit",
+                    "direction": "Direction", "de_name": "Data Element",
+                    "de_role": "Role", "data_type": "Data Type",
+                    "sys_name": "System", "system_type": "Sys Type",
+                    "source_table": "Table", "source_field": "Field",
+                })
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+# -- Metric hierarchy --------------------------------------------------------
+LEVEL_LABEL = {
+    "control": "L1 Control",
+    "workflow": "L2 Workflow",
+    "cross_workflow": "L3 Cross-workflow",
+    "executive": "L4 Executive",
+}
+
+
+def _hierarchy_tables_exist():
+    try:
+        col = fetch_all(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'metric' AND column_name = 'metric_level'
+            """
+        )
+        tab = fetch_all(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = 'metric_rollup'
+            """
+        )
+        return bool(col) and bool(tab)
+    except Exception:
+        return False
+
+
+with tab_hierarchy:
+    st.markdown(
+        "**Roll-up chain** from control metrics (L1) through workflow (L2), "
+        "cross-workflow (L3), to executive (L4). "
+        "See `metric_rollup` and `metric.metric_level` in the database."
+    )
+    if not _hierarchy_tables_exist():
+        st.warning(
+            "Metric hierarchy is not installed. Apply `db/migration_metric_hierarchy.sql` "
+            "and load `db/seed_metric_hierarchy.sql` (or the hierarchy section of `db/seed.sql`), then refresh."
+        )
+    else:
+        metrics = fetch_all(
+            """
+            SELECT id, action_id, workflow_id, metric_level, name, description, unit, direction
+            FROM metric
+            ORDER BY metric_level, id
+            """
+        )
+        rollup = fetch_all(
+            """
+            SELECT
+                mr.parent_metric_id,
+                mr.child_metric_id,
+                mr.rollup_rule,
+                mr.sort_order,
+                mr.notes,
+                p.name  AS parent_name,
+                p.metric_level AS parent_level,
+                c.name  AS child_name,
+                c.metric_level AS child_level
+            FROM metric_rollup mr
+            JOIN metric p ON p.id = mr.parent_metric_id
+            JOIN metric c ON c.id = mr.child_metric_id
+            ORDER BY mr.parent_metric_id, mr.sort_order, mr.child_metric_id
+            """
+        )
+
+        if not metrics:
+            st.info("No metrics in the database.")
+        else:
+            m_by_id = {m["id"]: m for m in metrics}
+            children_map = {}
+            for r in rollup:
+                children_map.setdefault(r["parent_metric_id"], []).append(r)
+
+            for pid in children_map:
+                children_map[pid].sort(key=lambda x: (x["sort_order"], x["child_metric_id"]))
+
+            child_ids = {r["child_metric_id"] for r in rollup}
+            root_ids = [
+                m["id"]
+                for m in metrics
+                if m["id"] in children_map and m["id"] not in child_ids
+            ]
+
+            h_mermaid, h_tree, h_edges, h_levels = st.tabs(
+                ["Roll-up flowchart", "Roll-up tree", "Roll-up edges", "Metrics by level"]
+            )
+
+            with h_mermaid:
+                st.caption(
+                    "Interactive flowchart powered by [Mermaid.js](https://mermaid.js.org/) "
+                    "(anchor → executive / rolled-up metrics → … → control metrics). "
+                    "Edge labels show the roll-up rule. "
+                    "**Zoom:** use the **- / + / Reset** bar above the chart inside the frame, or **Ctrl+scroll** "
+                    "(**Cmd+scroll** on Mac) while the pointer is over the chart area."
+                )
+                if not rollup:
+                    st.info("No rows in `metric_rollup` yet. Load hierarchy seed data.")
+                else:
+                    col_layout, _ = st.columns([1, 4])
+                    with col_layout:
+                        h_dir = st.radio(
+                            "Diagram layout",
+                            ("LR", "TB"),
+                            horizontal=True,
+                            index=0,
+                            format_func=lambda d: "Left -> right"
+                            if d == "LR"
+                            else "Top -> bottom",
+                            help="`flowchart LR` runs left-to-right; `flowchart TB` runs top-down.",
+                            key="hier_mermaid_dir",
+                        )
+                    st.markdown(hierarchy_flowchart_legend_html(), unsafe_allow_html=True)
+                    h_src = build_metric_hierarchy_mermaid(
+                        m_by_id, rollup, direction=h_dir
+                    )
+                    with st.expander("View / copy Mermaid source"):
+                        st.code(h_src, language="mermaid")
+                    render_mermaid_html(h_src, height=950)
+
+            with h_tree:
+                st.subheader("From executive roots downward")
+                if not rollup:
+                    st.info("No rows in `metric_rollup` yet. Load seed data for the hierarchy section.")
+                elif not root_ids:
+                    st.info("No root metrics found (every parent is also a child). Check data integrity.")
+                else:
+
+                    def render_node(mid: int, depth: int = 0):
+                        m = m_by_id.get(mid)
+                        if not m:
+                            return
+                        indent = "    " * depth
+                        lvl = LEVEL_LABEL.get(m["metric_level"], m["metric_level"])
+                        unit = m.get("unit") or "—"
+                        st.write(
+                            f"{indent}**{m['name']}** · {lvl} · {unit} · "
+                            f"{m['direction'].replace('_', ' ')}"
+                        )
+                        if m.get("description"):
+                            st.caption(f"{indent}{m['description']}")
+                        for edge in children_map.get(mid, []):
+                            rule = edge["rollup_rule"].replace("_", " ")
+                            note = f" — {edge['notes']}" if edge.get("notes") else ""
+                            st.write(
+                                f"{indent}  ↳ {rule}{note} → **{edge['child_name']}** "
+                                f"({LEVEL_LABEL.get(edge['child_level'], edge['child_level'])})"
+                            )
+                            render_node(edge["child_metric_id"], depth + 1)
+
+                    for rid in sorted(root_ids):
+                        with st.container():
+                            render_node(rid, 0)
+                            st.divider()
+
+            with h_edges:
+                if rollup:
+                    df = pd.DataFrame(rollup)
+                    show = df[
+                        [
+                            "parent_name",
+                            "parent_level",
+                            "rollup_rule",
+                            "sort_order",
+                            "child_name",
+                            "child_level",
+                            "notes",
+                        ]
+                    ].rename(
+                        columns={
+                            "parent_name": "Parent metric",
+                            "parent_level": "Parent level",
+                            "rollup_rule": "Roll-up rule",
+                            "sort_order": "Order",
+                            "child_name": "Child metric",
+                            "child_level": "Child level",
+                            "notes": "Notes",
+                        }
+                    )
+                    st.dataframe(show, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No roll-up edges defined.")
+
+            with h_levels:
+                dfm = pd.DataFrame(metrics)
+                dfm["level"] = dfm["metric_level"].map(LEVEL_LABEL).fillna(dfm["metric_level"])
+                st.dataframe(
+                    dfm[
+                        ["id", "level", "name", "unit", "direction", "workflow_id", "action_id"]
+                    ].rename(columns={"workflow_id": "workflow_id (L2 anchor)"}),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                unlinked = [
+                    m
+                    for m in metrics
+                    if m["metric_level"] == "control" and m["id"] not in child_ids
+                ]
+                st.markdown(
+                    "**Control metrics not referenced as children in any roll-up** "
+                    "(expected for many leaves)."
+                )
+                st.caption(
+                    f"Count: {len(unlinked)} — e.g. baseline operational metrics awaiting hierarchy linkage."
+                )

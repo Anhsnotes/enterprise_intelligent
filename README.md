@@ -4,7 +4,7 @@ A framework for standardizing decision-making across enterprises by redesigning 
 
 ## Streamlit UI
 
-The app code is under `ui/`: entry point `ui/Home.py`, multi-page routes in `ui/pages/`, and shared helpers in `ui/workflow_ui.py`. The database module stays at the repository root (`db.py`). From the repo root:
+The app code is under `ui/`: entry point `ui/Home.py` (workflow **lineage** and **metric hierarchy** Mermaid views), multi-page routes in `ui/pages/`, and shared helpers in `ui/workflow_ui.py`. The database module stays at the repository root (`db.py`). From the repo root:
 
 ```bash
 streamlit run ui/Home.py
