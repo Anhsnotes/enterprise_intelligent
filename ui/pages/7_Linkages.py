@@ -13,8 +13,32 @@ st.title("Linkages")
 st.caption("Manage the cross-layer relationships that form the lineage chain.")
 
 DE_ROLES = ["numerator", "denominator", "filter", "dimension", "input"]
+ROLLUP_RULES = [
+    "weighted_average",
+    "sum",
+    "min",
+    "max",
+    "structural",
+    "ratio",
+]
 
-tab_mde, tab_des = st.tabs(["Metric <-> Data Element", "Data Element <-> System"])
+
+def _metric_rollup_installed() -> bool:
+    try:
+        r = fetch_all(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = 'metric_rollup'
+            """
+        )
+        return bool(r)
+    except Exception:
+        return False
+
+
+tab_mde, tab_des, tab_roll = st.tabs(
+    ["Metric <-> Data Element", "Data Element <-> System", "Metric roll-up"]
+)
 
 # ===================================================================
 # Tab 1 - Metric <-> Data Element
@@ -172,3 +196,130 @@ with tab_des:
             )
             st.success("Removed.")
             st.rerun()
+
+
+# ===================================================================
+# Tab 3 - Metric roll-up (parent composes child)
+# ===================================================================
+with tab_roll:
+    st.subheader("Metric roll-up (parent → child)")
+    st.caption(
+        "Each row is an edge in `metric_rollup`: the **parent** metric aggregates **child** metrics "
+        "using **rollup_rule**. To change parent/child, remove the edge and add a new one."
+    )
+
+    if not _metric_rollup_installed():
+        st.warning(
+            "Table `metric_rollup` is not installed. Run `db/migration_metric_hierarchy.sql`, then refresh."
+        )
+    else:
+        all_metrics = fetch_all(
+            """
+            SELECT id, name, metric_level, workflow_id
+            FROM metric
+            ORDER BY metric_level, id
+            """
+        )
+        links_ru = fetch_all(
+            """
+            SELECT
+                mr.parent_metric_id,
+                p.name AS parent_name,
+                p.metric_level AS parent_level,
+                mr.child_metric_id,
+                c.name AS child_name,
+                c.metric_level AS child_level,
+                mr.rollup_rule,
+                mr.sort_order,
+                mr.notes
+            FROM metric_rollup mr
+            JOIN metric p ON p.id = mr.parent_metric_id
+            JOIN metric c ON c.id = mr.child_metric_id
+            ORDER BY mr.parent_metric_id, mr.sort_order, mr.child_metric_id
+            """
+        )
+
+        if links_ru:
+            st.dataframe(pd.DataFrame(links_ru), use_container_width=True, hide_index=True)
+        else:
+            st.info("No roll-up rows yet.")
+
+        st.markdown("---")
+        st.markdown("**Add roll-up edge**")
+
+        if not all_metrics:
+            st.warning("Add metrics first (control metrics via **Metrics**, rolled-up metrics via SQL/seed).")
+        else:
+
+            def _m_label(m: dict) -> str:
+                lvl = m.get("metric_level") or "control"
+                wf = m.get("workflow_id")
+                extra = f", wf_id={wf}" if wf else ""
+                return f"{m['id']} — {m['name']} ({lvl}{extra})"
+
+            id_by_label = {_m_label(m): m["id"] for m in all_metrics}
+            labels = list(id_by_label.keys())
+
+            with st.form("add_roll", clear_on_submit=True):
+                c1, c2 = st.columns(2)
+                parent_lab = c1.selectbox(
+                    "Parent metric (composite / higher level)",
+                    labels,
+                    key="ru_parent",
+                )
+                child_lab = c2.selectbox(
+                    "Child metric (contributing / lower level)",
+                    labels,
+                    key="ru_child",
+                )
+                c3, c4, c5 = st.columns(3)
+                rule = c3.selectbox("Roll-up rule", ROLLUP_RULES)
+                sort_order = c4.number_input("Sort order", min_value=0, value=0, step=1)
+                notes = c5.text_input("Notes (optional)", "")
+                if st.form_submit_button("Add edge"):
+                    pid, cid = id_by_label[parent_lab], id_by_label[child_lab]
+                    if pid == cid:
+                        st.error("Parent and child must be different metrics.")
+                    else:
+                        try:
+                            execute(
+                                """
+                                INSERT INTO metric_rollup
+                                    (parent_metric_id, child_metric_id, rollup_rule, sort_order, notes)
+                                VALUES (%s, %s, %s, %s, %s)
+                                """,
+                                (
+                                    pid,
+                                    cid,
+                                    rule,
+                                    int(sort_order),
+                                    notes or None,
+                                ),
+                            )
+                            st.success("Roll-up edge added.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(str(e))
+
+        st.markdown("---")
+        st.markdown("**Remove roll-up edge**")
+        if links_ru:
+            rm_labels = {
+                f"{r['parent_name']} (id {r['parent_metric_id']}) → "
+                f"{r['child_name']} (id {r['child_metric_id']}) [{r['rollup_rule']}]": r
+                for r in links_ru
+            }
+            sel_ru = st.selectbox("Select edge to remove", list(rm_labels.keys()), key="rm_ru")
+            if st.button("Remove edge", key="btn_rm_ru"):
+                r = rm_labels[sel_ru]
+                execute(
+                    """
+                    DELETE FROM metric_rollup
+                    WHERE parent_metric_id = %s AND child_metric_id = %s
+                    """,
+                    (r["parent_metric_id"], r["child_metric_id"]),
+                )
+                st.success("Removed.")
+                st.rerun()
+        elif all_metrics:
+            st.caption("No edges to remove.")

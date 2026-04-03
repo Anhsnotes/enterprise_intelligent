@@ -10,7 +10,11 @@ from ui.workflow_ui import sql_order_category, workflow_options_by_category
 
 st.set_page_config(page_title="Metrics", layout="wide")
 st.title("Metrics")
-st.caption("Control metrics that govern each action and signal when corrective action is needed.")
+st.caption(
+    "Control metrics that govern each action. "
+    "**metric_level** is `control` here; rolled-up metrics (workflow / cross-workflow / executive) "
+    "are defined in the database and visualized under **Home → Metric hierarchy**."
+)
 
 DIRECTIONS = ["higher_is_better", "lower_is_better", "target"]
 
@@ -49,7 +53,10 @@ with st.expander("Add New Metric"):
         if st.form_submit_button("Add Metric") and name:
             try:
                 execute(
-                    "INSERT INTO metric (action_id, name, description, unit, direction) VALUES (%s,%s,%s,%s,%s)",
+                    """
+                    INSERT INTO metric (action_id, workflow_id, metric_level, name, description, unit, direction)
+                    VALUES (%s, NULL, 'control', %s, %s, %s, %s)
+                    """,
                     (action_id, name, desc, unit, direction),
                 )
                 st.success(f"Added metric: {name}")
@@ -58,12 +65,25 @@ with st.expander("Add New Metric"):
                 st.error(str(e))
 
 # -- List -----------------------------------------------------------
-metrics = fetch_all("SELECT * FROM metric WHERE action_id=%s ORDER BY id", (action_id,))
+metrics = fetch_all(
+    """
+    SELECT id, action_id, workflow_id, metric_level, name, description, unit, direction,
+           created_at, updated_at
+    FROM metric
+    WHERE action_id = %s
+    ORDER BY id
+    """,
+    (action_id,),
+)
 if not metrics:
     st.info("No metrics for this action yet.")
     st.stop()
 
-st.dataframe(pd.DataFrame(metrics), use_container_width=True, hide_index=True)
+df_show = pd.DataFrame(metrics)
+# Prominent hierarchy columns first
+_prio = ["id", "metric_level", "workflow_id", "name", "unit", "direction", "description"]
+df_show = df_show[[c for c in _prio if c in df_show.columns] + [c for c in df_show.columns if c not in _prio]]
+st.dataframe(df_show, use_container_width=True, hide_index=True)
 
 # -- Edit / Delete --------------------------------------------------
 st.subheader("Edit / Delete")
@@ -96,3 +116,44 @@ with col_del:
         execute("DELETE FROM metric WHERE id=%s", (metric["id"],))
         st.success("Deleted.")
         st.rerun()
+
+# -- Roll-up links (metric_rollup) ---------------------------------
+st.subheader("Roll-up relationships")
+try:
+    parents = fetch_all(
+        """
+        SELECT mr.parent_metric_id, p.name AS parent_name, p.metric_level AS parent_level,
+               mr.rollup_rule, mr.sort_order
+        FROM metric_rollup mr
+        JOIN metric p ON p.id = mr.parent_metric_id
+        WHERE mr.child_metric_id = %s
+        ORDER BY mr.sort_order, mr.parent_metric_id
+        """,
+        (metric["id"],),
+    )
+    children = fetch_all(
+        """
+        SELECT mr.child_metric_id, c.name AS child_name, c.metric_level AS child_level,
+               mr.rollup_rule, mr.sort_order, mr.notes
+        FROM metric_rollup mr
+        JOIN metric c ON c.id = mr.child_metric_id
+        WHERE mr.parent_metric_id = %s
+        ORDER BY mr.sort_order, mr.child_metric_id
+        """,
+        (metric["id"],),
+    )
+    if parents:
+        st.markdown("**Feeds into (this metric rolls up to):**")
+        st.dataframe(pd.DataFrame(parents), use_container_width=True, hide_index=True)
+    else:
+        st.caption("*Not a child of any rolled-up metric in `metric_rollup`.*")
+
+    if children:
+        st.markdown("**Composed of (children in the hierarchy):**")
+        st.dataframe(pd.DataFrame(children), use_container_width=True, hide_index=True)
+    else:
+        st.caption("*Not a parent in `metric_rollup` (typical for leaf control metrics).*")
+except Exception:
+    st.info(
+        "Install the metric hierarchy (`db/migration_metric_hierarchy.sql`) to see roll-up links here."
+    )
