@@ -4,11 +4,40 @@ A framework for standardizing decision-making across enterprises by redesigning 
 
 ## Streamlit UI
 
-The app code is under `ui/`: entry point `ui/Home.py` (workflow **lineage** and **metric hierarchy** Mermaid views), multi-page routes in `ui/pages/`, and shared helpers in `ui/workflow_ui.py`. The database module stays at the repository root (`db.py`). From the repo root:
+The app code is under `ui/`: entry point `ui/Home.py`, multi-page routes in `ui/pages/`, and shared helpers in `ui/workflow_ui.py` (including Mermaid.js rendering). The database module stays at the repository root (`db.py`). From the repo root:
 
 ```bash
 streamlit run ui/Home.py
 ```
+
+### Home (`ui/Home.py`)
+
+Two top-level tabs:
+
+| Tab | What it shows |
+|-----|----------------|
+| **Workflow lineage** | Pick a workflow, then **Lineage Flowchart** (Mermaid: workflow → step → action → metric → data element → system field), **Lineage Tree**, or **Lineage Table**. |
+| **Metric hierarchy** | Roll-up chain from control metrics (L1) through workflow (L2), cross-workflow (L3), to executive (L4): Mermaid flowchart, tree, edge list, and metrics-by-level table. Requires the metric hierarchy migration and seed (see [Database](#database)). |
+
+### Other pages
+
+| Page | Role |
+|------|------|
+| **Metrics** | Create and edit **control** metrics per action (`metric_level = control`). Shows `metric_level`, `workflow_id`, and roll-up links for the selected metric when `metric_rollup` exists. |
+| **Linkages** | Metric ↔ data element, data element ↔ system, and **Metric roll-up** (add/remove **parent → child** edges in `metric_rollup`). Rolled-up metric *definitions* (non-control rows in `metric`) are still typically loaded via SQL or seed. |
+
+## Database
+
+PostgreSQL. Core DDL is in `db/schema.sql`. Docker Compose (`docker-compose.yml`) mounts `schema.sql` and `db/seed.sql` for first-time database initialization.
+
+**Metric hierarchy** (optional layer on top of control metrics):
+
+- `metric`: includes `metric_level` (`control` | `workflow` | `cross_workflow` | `executive`) and optional `workflow_id`; control metrics keep `action_id`, rolled-up metrics use `action_id` NULL.
+- `metric_rollup`: parent/child metric relationships (`parent_metric_id`, `child_metric_id`, `rollup_rule`, `sort_order`, `notes`).
+
+Existing databases created before this feature should run `db/migration_metric_hierarchy.sql`, then load `db/seed_metric_hierarchy.sql` (or the hierarchy block in `db/seed.sql`). Idempotent re-run: use `seed_metric_hierarchy.sql` (uses `ON CONFLICT DO NOTHING` where applicable).
+
+Older installs may also need `db/migration_workflow_category.sql` if `workflow.category` was added after your DB was created.
 
 ## Motivation
 
@@ -62,7 +91,7 @@ Workflows are stored with a **category** so lists and the lineage viewer stay ea
 | Operations & Manufacturing | Plan-to-Produce |
 | Human Capital | Hire-to-Retire |
 
-The seed includes full operation-step, action, metric, and lineage chains for all seven workflows. Existing databases created before `workflow.category` or before these chains were added should run `db/migration_workflow_category.sql` if needed, then reload or migrate seed data.
+The seed includes full operation-step, action, metric, and lineage chains for all seven workflows, plus an illustrative **metric hierarchy** (rolled-up metrics and `metric_rollup` edges) when you load the current `db/seed.sql` on a schema that includes those tables. Existing databases created before `workflow.category` or before these chains were added should run `db/migration_workflow_category.sql` if needed, then reload or migrate seed data.
 
 ## License
 
